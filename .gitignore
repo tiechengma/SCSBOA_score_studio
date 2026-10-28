@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+tmp/
+build/
+dist/
+*.spec
+!SCSBOA-Score-Studio.spec
+data/
+
+node_modules/
+experiments/
+.env
+.env.*
+*.scsboa
+*.sqlite
+*.sqlite-*
+web/public/ocr/ort-wasm-*
+
+# Local conversation preferences
+基础对话设定.md
