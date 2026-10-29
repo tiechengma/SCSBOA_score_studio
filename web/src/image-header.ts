@@ -1,3 +1,10 @@
+export function assertImageDimensions(width:number,height:number){
+ if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width>20000||height>20000||width*height>40000000)throw Error('Original image exceeds safe dimensions (40 megapixels / 20,000 pixels per side). Download the original instead.');
+}
+export async function checkedImageDimensions(blob:Blob,ext:string){
+ if(blob.size>100*1024*1024)throw Error('Original exceeds 100 MB.');
+ const size=await imageDimensions(blob,ext);assertImageDimensions(...size);return size;
+}
 // Read dimensions before allocating a decoded bitmap. JPEG headers are scanned with bounded reads.
 export async function imageDimensions(file:Blob,ext:string):Promise<[number,number]>{
  const bytes=new Uint8Array(await file.slice(0,32).arrayBuffer()),v=new DataView(bytes.buffer);

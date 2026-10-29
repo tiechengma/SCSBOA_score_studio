@@ -1,5 +1,4 @@
 import {copyFile,mkdir,readdir} from 'node:fs/promises';
-import {fileURLToPath} from 'node:url';
 const root=new URL('../',import.meta.url);
 await mkdir(new URL('public/ocr/',root),{recursive:true});
 for(const name of ['ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs'])await copyFile(new URL('node_modules/onnxruntime-web/dist/'+name,root),new URL('public/ocr/'+name,root));
