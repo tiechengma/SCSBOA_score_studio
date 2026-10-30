@@ -40,6 +40,13 @@ class SecurityTests(unittest.TestCase):
         with zipfile.ZipFile(path,'w') as z:z.writestr('manifest.json','[]')
         with self.assertRaises(ValueError):self.lib.read_package(path)
 
+    def test_compressed_package_limit_precedes_zip_parsing(self):
+        path=self.package([self.row])
+        with patch('scorestudio.storage.MAX_PACKAGE',1),patch('scorestudio.storage.zipfile.ZipFile') as parser:
+            with self.assertRaisesRegex(ValueError,'Package exceeds'):
+                self.lib.read_package(path)
+            parser.assert_not_called()
+
     def test_cross_scheme_is_whole_record_choice(self):
         self.lib.commit([self.row],'initial',lambda *a:None)
         incoming=copy.deepcopy(self.row);incoming['scheme']='different-scale';incoming['scores']={'ge.total':99};incoming['awards']={'New award':'New source'}

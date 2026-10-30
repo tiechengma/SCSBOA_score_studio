@@ -198,6 +198,7 @@ class Library:
             if temp.exists(): temp.unlink()
 
     def read_package(self,path):
+        if Path(path).stat().st_size>MAX_PACKAGE:raise ValueError('Package exceeds 512 MB.')
         with zipfile.ZipFile(path) as z:
             infos=z.infolist(); names=[i.filename for i in infos]
             if len(infos)>10000 or sum(i.file_size for i in infos)>MAX_PACKAGE or len(set(names))!=len(names):

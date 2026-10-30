@@ -1,3 +1,4 @@
+import {assertSafeMetadata} from './safe-metadata.ts';
 import {COLUMNS} from './columns.ts';
 export {COLUMNS, MAIN} from './columns.ts';
 export type Source={asset:string;name:string;page:number;sha256?:string};
@@ -7,19 +8,22 @@ export const normalize=(s:string)=>s.trim().replace(/\s+/g,' ').toLowerCase();
 export const schoolName=(s:string)=>['arroyo knight band & colorguard','arroyo knights band & colorguard'].includes(normalize(s))?DEFAULT:s.trim();
 export const schoolKey=(s:string)=>normalize(schoolName(s));
 export function schoolOptions(names:string[]){const seen=new Map<string,string>();for(const name of names){const key=schoolKey(name);if(!seen.has(key))seen.set(key,schoolName(name).replace(/\s+/g,' '));}return [...seen.values()].sort((a,b)=>a.localeCompare(b));}
+export const eventKey=(r:Pick<Row,'date'|'event'>)=>JSON.stringify([r.date,r.event].map(normalize));
 export const identity=(r:Row)=>JSON.stringify([r.season,r.date,r.event,r.division,schoolName(r.school)].map(normalize));
 export const blank=():Row=>({season:'2026',date:'',event:'',division:'',school:'',original_school:'',scheme:'scsboa-field-2026',scores:{},ranks:{},judges:{},awards:{},sources:[],notes:''});
 export const assetPattern=/^[a-f0-9]{64}\.(pdf|png|jpe?g|webp|bmp|tiff?|heic|heif)$/;
 const obj=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 export function validate(r:unknown):asserts r is Row {
  if(!obj(r))throw Error('Record must be an object.');
+ assertSafeMetadata(r);
  for(const key of ['season','date','event','division','school','scheme']){if(typeof r[key]!=='string'||!r[key].trim())throw Error(key==='date'?'Competition date is missing. Open this record and enter the date shown on the original.':`${key} is required. Open this record to complete it.`);if(r[key].length>500)throw Error(`${key} must be at most 500 characters.`);}
  if(!/^\d{4}$/.test(r.season)||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||!Number.isFinite(Date.parse(r.date))||new Date(r.date).toISOString().slice(0,10)!==r.date)throw Error('Enter a valid year and date.');
  const fields=new Set(COLUMNS.map(c=>c[0]));
  for(const category of ['scores','ranks']){if(!obj(r[category]))throw Error(`Invalid ${category}.`);for(const [key,v] of Object.entries(r[category])){if(!fields.has(key))throw Error('Unknown score field.');if(v!==null&&(typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>10000))throw Error(`${key}: expected a finite number, not text.`);if(category==='ranks'&&v!==null&&(!Number.isInteger(v)||(v as number)<1))throw Error('Ranks must be positive whole numbers.');}}
  if(!Array.isArray(r.sources)||r.sources.length>1000||!obj(r.judges))throw Error('Invalid sources or judges.');
  for(const s of r.sources)if(!obj(s)||typeof s.name!=='string'||s.name.length>500||!Number.isInteger(s.page)||s.page<1||s.page>100||typeof s.asset!=='string'||!assetPattern.test(s.asset)||(s.sha256!==undefined&&s.sha256!==s.asset.split('.')[0]))throw Error('Invalid original attachment reference.');
- for(const [k,v] of Object.entries(r.judges))if(['__proto__','constructor','prototype'].includes(k)||typeof v!=='string'||v.length>500)throw Error('Invalid judge.');
+ if(Object.keys(r.judges).length>100)throw Error('At most 100 judge entries are allowed.');
+ for(const [k,v] of Object.entries(r.judges))if(k.length>500||['__proto__','constructor','prototype'].includes(k)||typeof v!=='string'||v.length>500)throw Error('Invalid judge.');
  for(const k of ['notes','original_school','header_text'])if(r[k]!==undefined&&(typeof r[k]!=='string'||r[k].length>30000))throw Error(`Invalid ${k}.`);
  validateAwards(r.awards??{});
 }

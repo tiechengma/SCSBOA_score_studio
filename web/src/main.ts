@@ -1,6 +1,6 @@
 import './style.css';
 import {selectExportRows} from './export-selection.ts';
-import {COLUMNS,MAIN,DEFAULT,blank,identity,normalize,schoolName,schoolKey,schoolOptions,validate,validateAwards,merge,warnings,type Row,type Conflict} from './model.ts';
+import {COLUMNS,MAIN,DEFAULT,blank,identity,eventKey,normalize,schoolName,schoolKey,schoolOptions,validate,validateAwards,merge,warnings,type Row,type Conflict} from './model.ts';
 import * as db from './db.ts';
 import {readPackage,exportPackage,download,verifyOriginals} from './packages.ts';
 import {importImages} from './importer.ts';
@@ -23,7 +23,6 @@ let importDialog:HTMLDialogElement|undefined;
 let reviewedBatch='';
 const pages=['Schools','Events','Season overview','Data Management'];
 const icons=['◈','▤','▥','⚙'];
-const eventKey=(r:Row)=>JSON.stringify([r.date,r.event]);
 function toast(message:string,error=false){const n=document.createElement('div');n.className='toast'+(error?' error':'');n.role='status';n.textContent=message;(Array.from(document.querySelectorAll('dialog[open]')).at(-1)??document.body).append(n);setTimeout(()=>n.remove(),9000);}
 async function attempt(fn:()=>void|Promise<void>){try{await fn();}catch(e){toast(e instanceof Error?e.message:String(e),true);}}
 function modal(title:string,body:string,wide=false){const d=document.createElement('dialog');d.className=wide?'wide':'';d.innerHTML=`<header><div><span class="eyebrow">SCORE STUDIO</span><h2>${esc(title)}</h2></div><button class="icon close" aria-label="Close dialog">×</button></header><div class="modal-body">${body}</div>`;document.body.append(d);d.querySelector('.close')!.addEventListener('click',()=>d.close());d.addEventListener('close',()=>{d.remove();for(const target of chartLayouts.keys())if(!target.isConnected)chartLayouts.delete(target);},{once:true});d.showModal();return d;}

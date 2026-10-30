@@ -18,8 +18,13 @@ export async function stage(file:File){if(file.size>MAX_SOURCE)throw Error('Sour
 export async function readPackage(file:Blob,budget=new ImportBudget()){
  if(file.size>MAX_PACKAGE)throw Error('Package exceeds 512 MB.');
  const zip=new ZipReader(new BlobReader(file));try{
- const entries=await zip.getEntries();if(entries.length>10000||new Set(entries.map(e=>e.filename)).size!==entries.length||entries.reduce((n,e)=>n+e.uncompressedSize,0)>MAX_PACKAGE)throw Error('Oversized package or duplicate ZIP entries.');
- const files=new Map(entries.map(e=>[e.filename,e]));const manifest=files.get('manifest.json');if(!manifest||manifest.directory||manifest.uncompressedSize>20*1024*1024)throw Error('Missing or oversized manifest.');
+ const files=new Map<string,Awaited<ReturnType<typeof zip.getEntries>>[number]>();let declaredSize=0;
+ for await(const entry of zip.getEntriesGenerator()){
+  declaredSize+=entry.uncompressedSize;
+  if(files.size>=10000||files.has(entry.filename)||!Number.isSafeInteger(declaredSize)||declaredSize>MAX_PACKAGE)throw Error('Oversized package or duplicate ZIP entries.');
+  files.set(entry.filename,entry);
+ }
+ const manifest=files.get('manifest.json');if(!manifest||manifest.directory||manifest.uncompressedSize>20*1024*1024)throw Error('Missing or oversized manifest.');
  let totalExpanded=0;
  async function bounded(name:string,limit:number){
   const entry=files.get(name);if(!entry||entry.directory||entry.encrypted||entry.uncompressedSize>limit)throw Error('Invalid or missing attachment: '+name);

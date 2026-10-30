@@ -1,3 +1,4 @@
+import {sourceFilename} from './source-filename.ts';
 import type {Row,Source} from './model.ts';
 import {checkedImageDimensions,assertImageDimensions} from './image-header.ts';
 import {renderOriginalPDF} from './importer.ts';
@@ -40,7 +41,7 @@ export function sourcePreview(dialog:HTMLDialogElement,row:Row,target:HTMLElemen
   const title=document.createElement('p');title.textContent=source.name+' · page '+source.page;
   const show=document.createElement('button');show.type='button';show.className='secondary';show.textContent='Preview original';show.onclick=()=>preview(source);
   const save=document.createElement('button');save.type='button';save.className='secondary';save.textContent='Download original';
-  save.onclick=async()=>{save.disabled=true;try{const blob=await load(source.asset);if(!blob)throw Error('Original is missing.');download(blob,source.name);}catch(error){title.textContent=source.name+' — '+String(error);}finally{save.disabled=false;}};
+  save.onclick=async()=>{save.disabled=true;try{const blob=await load(source.asset);if(!blob)throw Error('Original is missing.');download(blob,sourceFilename(source));}catch(error){title.textContent=source.name+' — '+String(error);}finally{save.disabled=false;}};
   item.append(title,show,save);list.append(item);
  }
  preview(row.sources[0]);
