@@ -13,7 +13,7 @@ export const assetPattern=/^[a-f0-9]{64}\.(pdf|png|jpe?g|webp|bmp|tiff?|heic|hei
 const obj=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 export function validate(r:unknown):asserts r is Row {
  if(!obj(r))throw Error('Record must be an object.');
- for(const key of ['season','date','event','division','school','scheme'])if(typeof r[key]!=='string'||!r[key].trim()||r[key].length>500)throw Error(`${key} is required (maximum 500 characters).`);
+ for(const key of ['season','date','event','division','school','scheme']){if(typeof r[key]!=='string'||!r[key].trim())throw Error(key==='date'?'Competition date is missing. Open this record and enter the date shown on the original.':`${key} is required. Open this record to complete it.`);if(r[key].length>500)throw Error(`${key} must be at most 500 characters.`);}
  if(!/^\d{4}$/.test(r.season)||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||!Number.isFinite(Date.parse(r.date))||new Date(r.date).toISOString().slice(0,10)!==r.date)throw Error('Enter a valid year and date.');
  const fields=new Set(COLUMNS.map(c=>c[0]));
  for(const category of ['scores','ranks']){if(!obj(r[category]))throw Error(`Invalid ${category}.`);for(const [key,v] of Object.entries(r[category])){if(!fields.has(key))throw Error('Unknown score field.');if(v!==null&&(typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>10000))throw Error(`${key}: expected a finite number, not text.`);if(category==='ranks'&&v!==null&&(!Number.isInteger(v)||(v as number)<1))throw Error('Ranks must be positive whole numbers.');}}
