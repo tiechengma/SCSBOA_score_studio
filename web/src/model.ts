@@ -1,15 +1,15 @@
 import {assertSafeMetadata} from './safe-metadata.ts';
-import {COLUMNS} from './columns.ts';
+import {FIELD_COLUMNS,PARADE_LAYOUTS,isParade,columnsFor,type ParadeLayout} from './columns.ts';
 export {COLUMNS, MAIN} from './columns.ts';
 export type Source={asset:string;name:string;page:number;sha256?:string};
-export type Row={season:string;date:string;event:string;division:string;school:string;original_school:string;scheme:string;scores:Record<string,number|null>;ranks:Record<string,number|null>;judges:Record<string,string>;awards:Record<string,string>;sources:Source[];notes:string;header_text?:string};
+export type Row={season:string;date:string;event:string;division:string;school:string;original_school:string;scheme:string;scores:Record<string,number|null>;ranks:Record<string,number|null>;judges:Record<string,string>;awards:Record<string,string>;sources:Source[];notes:string;header_text?:string;category?:string;parade_layout?:ParadeLayout};
 export const DEFAULT='Arroyo Knight Band & Colorguard';
 export const normalize=(s:string)=>s.trim().replace(/\s+/g,' ').toLowerCase();
-export const schoolName=(s:string)=>['arroyo knight band & colorguard','arroyo knights band & colorguard'].includes(normalize(s))?DEFAULT:s.trim();
+export const schoolName=(s:string)=>['arroyo knight band & colorguard','arroyo knights band & colorguard','arroyo hs'].includes(normalize(s))?DEFAULT:s.trim();
 export const schoolKey=(s:string)=>normalize(schoolName(s));
 export function schoolOptions(names:string[]){const seen=new Map<string,string>();for(const name of names){const key=schoolKey(name);if(!seen.has(key))seen.set(key,schoolName(name).replace(/\s+/g,' '));}return [...seen.values()].sort((a,b)=>a.localeCompare(b));}
-export const eventKey=(r:Pick<Row,'date'|'event'>)=>JSON.stringify([r.date,r.event].map(normalize));
-export const identity=(r:Row)=>JSON.stringify([r.season,r.date,r.event,r.division,schoolName(r.school)].map(normalize));
+export const eventKey=(r:Pick<Row,'date'|'event'> & {scheme?:string})=>JSON.stringify([...([r.date,r.event].map(normalize)),...(isParade(r)?['parade']:[])]);
+export const identity=(r:Row)=>JSON.stringify([r.season,r.date,r.event,r.division,schoolName(r.school),...(isParade(r)?['parade',r.category??'']:[])].map(normalize));
 export const blank=():Row=>({season:'2026',date:'',event:'',division:'',school:'',original_school:'',scheme:'scsboa-field-2026',scores:{},ranks:{},judges:{},awards:{},sources:[],notes:''});
 export const assetPattern=/^[a-f0-9]{64}\.(pdf|png|jpe?g|webp|bmp|tiff?|heic|heif)$/;
 const obj=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -18,7 +18,9 @@ export function validate(r:unknown):asserts r is Row {
  assertSafeMetadata(r);
  for(const key of ['season','date','event','division','school','scheme']){if(typeof r[key]!=='string'||!r[key].trim())throw Error(key==='date'?'Competition date is missing. Open this record and enter the date shown on the original.':`${key} is required. Open this record to complete it.`);if(r[key].length>500)throw Error(`${key} must be at most 500 characters.`);}
  if(!/^\d{4}$/.test(r.season)||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||!Number.isFinite(Date.parse(r.date))||new Date(r.date).toISOString().slice(0,10)!==r.date)throw Error('Enter a valid year and date.');
- const fields=new Set(COLUMNS.map(c=>c[0]));
+ if(r.category!==undefined&&(typeof r.category!=='string'||r.category.length>500))throw Error('Invalid school category.');
+ if(isParade(r)&&(typeof r.parade_layout!=='string'||!Object.hasOwn(PARADE_LAYOUTS,r.parade_layout)))throw Error('Choose a supported Parade scoring layout.');
+ const fields=new Set(isParade(r)?PARADE_LAYOUTS[r.parade_layout as ParadeLayout]:FIELD_COLUMNS.map(c=>c[0]));
  for(const category of ['scores','ranks']){if(!obj(r[category]))throw Error(`Invalid ${category}.`);for(const [key,v] of Object.entries(r[category])){if(!fields.has(key))throw Error('Unknown score field.');if(v!==null&&(typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>10000))throw Error(`${key}: expected a finite number, not text.`);if(category==='ranks'&&v!==null&&(!Number.isInteger(v)||(v as number)<1))throw Error('Ranks must be positive whole numbers.');}}
  if(!Array.isArray(r.sources)||r.sources.length>1000||!obj(r.judges))throw Error('Invalid sources or judges.');
  for(const s of r.sources)if(!obj(s)||typeof s.name!=='string'||s.name.length>500||!Number.isInteger(s.page)||s.page<1||s.page>100||typeof s.asset!=='string'||!assetPattern.test(s.asset)||(s.sha256!==undefined&&s.sha256!==s.asset.split('.')[0]))throw Error('Invalid original attachment reference.');
@@ -32,9 +34,16 @@ export type Conflict={category:'scores'|'ranks'|'judges'|'awards'|'record';field
 export function merge(old:Row,next:Row):{row:Row;conflicts:Conflict[]}{
  const row=structuredClone(old),conflicts:Conflict[]=[];
  if(old.scheme!==next.scheme)return {row,conflicts:[{category:'record',field:'scheme',saved:old.scheme,incoming:next.scheme}]};
+ if(isParade(old)&&old.parade_layout!==next.parade_layout)return {row,conflicts:[{category:'record',field:'scoring layout',saved:old.parade_layout,incoming:next.parade_layout}]};
  for(const category of ['scores','ranks','judges','awards'] as const){const dest=row[category]??={};for(let [key,value] of Object.entries(next[category]??{})){if(value===null||value==='')continue;if(category==='awards')key=Object.keys(dest).find(k=>normalize(k)===normalize(key))??key;const prev=(dest as any)[key];if(prev==null||prev==='')Object.defineProperty(dest,key,{value,writable:true,enumerable:true,configurable:true});else if(prev!==value)conflicts.push({category,field:key,saved:prev,incoming:value});}}
  for(const source of next.sources)if(!row.sources.some(s=>s.asset===source.asset&&s.page===source.page&&s.name===source.name))row.sources.push(structuredClone(source));
  if(!row.notes)row.notes=next.notes;if(!row.original_school)row.original_school=next.original_school;
  return {row,conflicts};
 }
-export function warnings(r:Row){const out:string[]=[];if(/Check OCR|OCR normalized/.test(r.notes))out.push('OCR review needed');for(const k of ['event','date','division'] as const)if(!r[k])out.push(k+' required');const s=r.scores;const missing=COLUMNS.filter(([k])=>s[k]==null).length;if(missing)out.push(`${missing} missing score fields`);if(r.date&&r.date.slice(0,4)!==r.season)out.push('Date and season differ');for(const [total,parts] of [['music.j1.total',['music.j1.stt','music.j1.mus']],['music.j2.total',['music.j2.stt','music.j2.mus']],['music.total',['music.j1.total','music.j2.total']],['ge.j1.total',['ge.j1.comp','ge.j1.comm']],['ge.j2.total',['ge.j2.comp','ge.j2.comm']],['ge.total',['ge.j1.total','ge.j2.total']],['visual.total',['visual.comp','visual.exc']],['subtotal',['music.total','ge.total','visual.total']],['auxiliary.raw',['auxiliary.comp','auxiliary.ach']],['percussion.raw',['percussion.comp','percussion.ach']]] as [string,string[]][]){if(s[total]!=null&&parts.every(k=>s[k]!=null)&&Math.abs(s[total]!-parts.reduce((a,k)=>a+s[k]!,0))>.015)out.push(`Check sum: ${total}`);}if(s.total!=null&&s.subtotal!=null&&s['penalties.total']!=null&&Math.abs(s.subtotal-Math.abs(s['penalties.total'])-s.total)>.015)out.push('Check penalty and final total');for(const [key,value] of Object.entries(s))if(value!=null&&value<0&&!key.startsWith('penalties'))out.push(`Negative score: ${key}`);return out;}
+export function warnings(r:Row){const out:string[]=[];if(/Check OCR|OCR normalized/.test(r.notes))out.push('OCR review needed');for(const k of ['event','date','division'] as const)if(!r[k])out.push(k+' required');const s=r.scores;const missing=columnsFor(r).filter(([k])=>s[k]==null).length;if(missing)out.push(`${missing} missing score fields`);if(r.date&&r.date.slice(0,4)!==r.season)out.push('Date and season differ');for(const [total,parts] of [['music.j1.total',['music.j1.stt','music.j1.mus']],['music.j2.total',['music.j2.stt','music.j2.mus']],['music.total',['music.j1.total','music.j2.total']],['ge.j1.total',['ge.j1.comp','ge.j1.comm']],['ge.j2.total',['ge.j2.comp','ge.j2.comm']],['ge.total',['ge.j1.total','ge.j2.total']],['visual.total',['visual.comp','visual.exc']],['subtotal',['music.total','ge.total','visual.total']],['auxiliary.raw',['auxiliary.comp','auxiliary.ach']],['percussion.raw',['percussion.comp','percussion.ach']]] as [string,string[]][]){if(s[total]!=null&&parts.every(k=>s[k]!=null)&&Math.abs(s[total]!-parts.reduce((a,k)=>a+s[k]!,0))>.015)out.push(`Check sum: ${total}`);}if(s.total!=null&&s.subtotal!=null&&(s['penalties.total']??s['penalties.raw'])!=null&&Math.abs(s.subtotal-Math.abs(s['penalties.total']??s['penalties.raw']!)-s.total)>.015)out.push('Check penalty and final total');for(const [key,value] of Object.entries(s))if(value!=null&&value<0&&!key.startsWith('penalties'))out.push(`Negative score: ${key}`);if(isParade(r)){
+ const sums:[string,string[]][]=[['parade.showmanship.total',['parade.showmanship.atun','parade.showmanship.dm','parade.showmanship.band']],['parade.marching.total',['parade.marching.march','parade.marching.maneuver']]];
+ for(const name of ['guard','composition','drum-major','drill'])sums.push([`parade.${name}.raw`,[`parade.${name}.comp`,`parade.${name}.ach`]]);
+ if(r.parade_layout==='single-drum-major')sums.push(['parade.music.total',['parade.music.j1.sound','parade.music.j1.technique','parade.music.j1.musicality']]);
+ else {for(const j of [1,2])sums.push([`parade.music.j${j}.total`,['sound','tuning','technique'].map(k=>`parade.music.j${j}.${k}`)]);if(['parade.music.total','parade.music.j1.total','parade.music.j2.total'].every(k=>s[k]!=null)&&Math.abs(s['parade.music.total']!-(s['parade.music.j1.total']!+s['parade.music.j2.total']!)/2)>.015)out.push('Check music judge average');}
+ for(const [total,parts] of sums)if(s[total]!=null&&parts.every(k=>s[k]!=null)&&Math.abs(s[total]!-parts.reduce((n,k)=>n+s[k]!,0))>.015)out.push(`Check sum: ${total}`);
+ }return out;}

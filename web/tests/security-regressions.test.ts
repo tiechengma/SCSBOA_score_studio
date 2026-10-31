@@ -76,3 +76,14 @@ test('shared originals are loaded once and only staged originals are scheduled f
  const needed=await verifyOriginals([r,{...r,school:'Other HS'}],new Map(),async()=>{loads++;return blob;});assert.equal(loads,1);assert.equal(needed.size,0);
  const staged=await verifyOriginals([r],new Map([[asset,blob]]),async()=>{throw Error('Must not read stored copy');});assert.equal(staged.get(asset),blob);
 });
+
+ test('alias collisions in old undo snapshots preserve records and history',async()=>{
+ const before=await db.read();
+ const database=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('scsboa-score-studio-web',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+ const tx=database.transaction('history','readwrite');
+ tx.objectStore('history').add({before:[{...row(),school:'Arroyo HS'},{...row(),school:'Arroyo Knight Band & Colorguard',scores:{total:99}}],label:'Legacy alias snapshot',at:new Date().toISOString()});
+ await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});database.close();
+ const target=await db.undoTarget();assert(target);
+ await assert.rejects(db.undo(target),/duplicate school aliases/);
+ assert.deepEqual(await db.read(),before);assert.deepEqual(await db.undoTarget(),target);
+ });

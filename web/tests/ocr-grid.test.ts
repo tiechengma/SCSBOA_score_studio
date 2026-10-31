@@ -20,3 +20,14 @@ test('blank footer and heavily cropped rows are not invented as complete rows',(
   assert.deepEqual(fixture(201,true)[0].ys,[100,140,180]);
   assert.equal(fixture(219,false)[0].clippedBottom,false);
 });
+
+test('header top follows the first numeric column when separated caption borders are too short',()=>{
+ const width=1200,height=220,data=new Uint8ClampedArray(width*height*4).fill(255);
+ const black=(x:number,y:number)=>{const i=(y*width+x)*4;data[i]=data[i+1]=data[i+2]=0;};
+ for(const y of [100,140,180])for(let x=20;x<=1100;x++)black(x,y);
+ for(let x=50;x<=1100;x+=35)for(let y=100;y<=180;y++)black(x,y);
+ for(let y=60;y<100;y++)black(50,y);
+ for(let x=50;x<300;x++)black(x,60);
+ const [grid]=detectGrid(width,height,data);
+ assert.equal(grid.headerTop,60);assert.deepEqual(grid.ys,[100,140,180]);
+});

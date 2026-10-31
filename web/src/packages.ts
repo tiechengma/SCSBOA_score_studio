@@ -1,5 +1,6 @@
 import {ZipReader,BlobReader,ZipWriter,BlobWriter,Uint8ArrayReader,configure} from '@zip.js/zip.js';
 import {validate,assetPattern,type Row} from './model.ts';
+import {isParade} from './columns.ts';
 import {ImportBudget} from './import-budget.ts';
 configure({useWebWorkers:false});
 export const MAX_SOURCE=100*1024*1024,MAX_PACKAGE=512*1024*1024;
@@ -36,13 +37,13 @@ export async function readPackage(file:Blob,budget=new ImportBudget()){
   try{await entry.getData!(stream,{checkSignature:true});}catch(error){throw limitError??error;}
   return new Blob(chunks as BlobPart[]);
  }
- const m=JSON.parse(await(await bounded('manifest.json',20*1024*1024)).text());if(m?.format!=='scsboa-score-studio'||![1,2].includes(m.version)||!Array.isArray(m.records)||m.records.length>50000)throw Error('Unsupported package.');budget.addRows(m.records.length);
+ const m=JSON.parse(await(await bounded('manifest.json',20*1024*1024)).text());if(m?.format!=='scsboa-score-studio'||![1,2,3].includes(m.version)||!Array.isArray(m.records)||m.records.length>50000)throw Error('Unsupported package.');budget.addRows(m.records.length);
  const assets=new Map<string,Blob>();for(const row of m.records){validate(row);row.awards??={};for(const s of row.sources){if(assets.has(s.asset))continue;budget.addAsset(s.asset);const blob=await bounded('assets/'+s.asset,MAX_SOURCE);if(await digest(blob)!==s.asset.split('.')[0])throw Error('Original attachment checksum mismatch.');assets.set(s.asset,blob);}}
  return {rows:m.records as Row[],assets};
  }finally{await zip.close();}
 }
 export async function exportPackage(rows:Row[],load:(key:string)=>Promise<Blob|undefined>){
- rows.forEach(validate);if(rows.length>50000)throw Error('Export at most 50,000 records.');const manifest=new TextEncoder().encode(JSON.stringify({format:'scsboa-score-studio',version:2,created:new Date().toISOString(),records:rows}));if(manifest.length>20*1024*1024)throw Error('Manifest exceeds 20 MB.');
+ rows.forEach(validate);if(rows.length>50000)throw Error('Export at most 50,000 records.');const manifest=new TextEncoder().encode(JSON.stringify({format:'scsboa-score-studio',version:rows.some(isParade)?3:2,created:new Date().toISOString(),records:rows}));if(manifest.length>20*1024*1024)throw Error('Manifest exceeds 20 MB.');
  const assets=new Map<string,Blob>();let size=manifest.length;for(const r of rows)for(const s of r.sources){if(assets.has(s.asset))continue;const blob=await load(s.asset);if(!blob||blob.size>MAX_SOURCE||await digest(blob)!==s.asset.split('.')[0])throw Error('Missing or damaged original: '+s.name);assets.set(s.asset,blob);size+=blob.size;if(size>MAX_PACKAGE||assets.size>9999)throw Error('Export too large. Export one season at a time.');}
  const zip=new ZipWriter(new BlobWriter('application/zip'));await zip.add('manifest.json',new Uint8ArrayReader(manifest));for(const [key,blob] of assets)await zip.add('assets/'+key,new BlobReader(blob));return zip.close();
 }

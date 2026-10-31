@@ -37,5 +37,7 @@ export async function undo(target:UndoTarget){
  const db=await open,t=db.transaction(['records','history','settings'],'readwrite'),complete=done(t);
  const [cursor,rev]=await Promise.all([request(t.objectStore('history').openCursor(null,'prev')),request(t.objectStore('settings').get('revision'))]);
  if(!cursor||(rev??0)!==target.revision||indexedDB.cmp(cursor.primaryKey,target.id)!==0)return stale(t,complete);
+ const restored:Row[]=cursor.value.before;
+ if(new Set(restored.map(identity)).size!==restored.length){t.abort();await complete.catch(()=>{});throw Error('Undo contains duplicate school aliases. Current records and undo history were preserved.');}
  const store=t.objectStore('records');store.clear();cursor.value.before.forEach((r:Row)=>store.put(r,identity(r)));cursor.delete();t.objectStore('settings').put((rev??0)+1,'revision');await complete;return true;
 }
